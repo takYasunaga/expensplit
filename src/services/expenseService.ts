@@ -1,6 +1,9 @@
 import { supabase } from '../lib/supabase'
 import { mockExpenses, mockGroup } from '../mockData'
-import type { Expense, Group } from '../types'
+import type { Expense, Group, NewExpense } from '../types'
+
+// Offline stand-in for the expenses table; additions last until the page reloads.
+let localExpenses: Expense[] = mockExpenses
 
 interface GroupRow {
   id: string
@@ -81,21 +84,27 @@ export async function fetchGroup(): Promise<Group> {
       .maybeSingle()
 
     if (error) throw error
-    if (!data) return mockGroup
+    if (!data) {
+      console.warn(
+        '[supabase] Connected, but the groups table is empty. Using sample data. ' +
+          'Run supabase/schema.sql to seed it.',
+      )
+      return mockGroup
+    }
     return toGroup(data as GroupRow)
   } catch (error) {
-    console.warn('Supabase group query failed, using mock data:', error)
+    console.warn('[supabase] Group query failed. Using sample data:', error)
     return mockGroup
   }
 }
 
 /**
  * Loads a group's expenses with their line items, oldest first. The mock
- * group always gets the mock expenses. A Supabase group never does, because
+ * group always gets the local mock expenses. A Supabase group never does, because
  * mock expenses reference mock member ids; its query errors are thrown.
  */
 export async function fetchExpenses(groupId: string): Promise<Expense[]> {
-  if (!supabase || groupId === mockGroup.id) return mockExpenses
+  if (!supabase || groupId === mockGroup.id) return localExpenses
 
   const { data, error } = await supabase
     .from('expenses')
@@ -107,4 +116,69 @@ export async function fetchExpenses(groupId: string): Promise<Expense[]> {
 
   if (error) throw error
   return (data as ExpenseRow[]).map(toExpense)
+}
+
+/**
+ * Saves an expense and its line items to Supabase and returns the saved
+ * expense. For the mock group it is only kept in memory. Throws if a write
+ * fails; a half-saved expense is removed again.
+ */
+export async function createExpense(expense: NewExpense): Promise<Expense> {
+  if (!supabase || expense.groupId === mockGroup.id) {
+    const saved: Expense = {
+      ...expense,
+      id: crypto.randomUUID(),
+      lineItems: expense.lineItems.map((item) => ({ ...item, id: crypto.randomUUID() })),
+    }
+    localExpenses = [...localExpenses, saved]
+    return saved
+  }
+
+  const { data: expenseRow, error: expenseError } = await supabase
+    .from('expenses')
+    .insert({
+      group_id: expense.groupId,
+      title: expense.title,
+      payer_id: expense.payerId,
+      total_amount: expense.totalAmount,
+      receipt_image: expense.receiptImage ?? null,
+      created_timestamp: expense.createdTimestamp,
+    })
+    .select('id')
+    .single()
+
+  if (expenseError) throw expenseError
+  const expenseId = (expenseRow as { id: string }).id
+
+  const { data: itemRows, error: itemsError } = await supabase
+    .from('line_items')
+    .insert(
+      expense.lineItems.map((item, position) => ({
+        expense_id: expenseId,
+        position,
+        description: item.description,
+        amount: item.amount,
+        assigned_to: item.assignedTo,
+      })),
+    )
+    .select('id, position')
+
+  if (itemsError) {
+    // The two inserts are not one transaction, so undo the first by hand.
+    const { error: cleanupError } = await supabase.from('expenses').delete().eq('id', expenseId)
+    if (cleanupError) console.error('Could not remove half-saved expense:', cleanupError)
+    throw itemsError
+  }
+
+  const idByPosition = new Map(
+    (itemRows as { id: string; position: number }[]).map((row) => [row.position, row.id]),
+  )
+  return {
+    ...expense,
+    id: expenseId,
+    lineItems: expense.lineItems.map((item, position) => ({
+      ...item,
+      id: idByPosition.get(position) ?? crypto.randomUUID(),
+    })),
+  }
 }

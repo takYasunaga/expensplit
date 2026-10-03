@@ -38,6 +38,11 @@ export interface Expense {
   createdTimestamp: string
 }
 
+/** An expense that has not been saved yet, so nothing has an id. */
+export interface NewExpense extends Omit<Expense, 'id' | 'lineItems'> {
+  lineItems: Omit<LineItem, 'id'>[]
+}
+
 /** PRD calls this the "Payment Object". */
 export type PaymentObject = Expense
 
@@ -62,4 +67,26 @@ export interface Settlement {
   balances: MemberBalance[]
   /** Optimal Settlement: simplified transfers that minimize total payments. */
   transfers: Transfer[]
+}
+
+/** A line item being typed into the Add Expense form; not yet validated. */
+export interface LineItemDraft {
+  id: string
+  name: string
+  /** Raw dollar input, e.g. "12.50". */
+  price: string
+  /** Member IDs sharing this item, kept in group member order. */
+  assignedTo: string[]
+}
+
+/** Add Expense form state. Amounts are raw dollar input strings. */
+export interface ExpenseDraft {
+  title: string
+  totalAmount: string
+  /** Local calendar date as YYYY-MM-DD. */
+  date: string
+  payerId: string
+  /** Quick Equal Split: divide the total across all members, ignoring lineItems. */
+  splitEqually: boolean
+  lineItems: LineItemDraft[]
 }

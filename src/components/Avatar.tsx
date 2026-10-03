@@ -10,6 +10,7 @@ const COLORS = [
 ]
 
 const SIZES = {
+  xs: 'size-5 text-[10px]',
   sm: 'size-7 text-xs',
   md: 'size-10 text-sm',
 }

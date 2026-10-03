@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { AddExpenseModal } from './components/AddExpenseModal'
 import { ExpenseList } from './components/ExpenseList'
 import { Header } from './components/Header'
 import { MemberList } from './components/MemberList'
@@ -16,6 +17,8 @@ const TABS: TabOption<TabId>[] = [
 function App() {
   const [group, setGroup] = useState<Group | null>(null)
   const [activeTab, setActiveTab] = useState<TabId>('expenses')
+  const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false)
+  const [expensesVersion, setExpensesVersion] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -39,7 +42,7 @@ function App() {
     <div className="min-h-svh bg-gray-50 text-gray-900">
       {isMockGroup(group) && (
         <p className="bg-amber-100 px-4 py-1.5 text-center text-xs text-amber-900">
-          Showing sample data — Supabase is not connected.
+          Showing sample data — Supabase is not connected, so new expenses are lost on reload.
         </p>
       )}
       <Header group={group} />
@@ -52,12 +55,38 @@ function App() {
           className="pt-4"
         >
           {activeTab === 'expenses' ? (
-            <ExpenseList key={group.id} groupId={group.id} members={group.members} />
+            <>
+              <div className="mb-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsAddExpenseOpen(true)}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                >
+                  + Add Expense
+                </button>
+              </div>
+              <ExpenseList
+                key={group.id}
+                groupId={group.id}
+                members={group.members}
+                refreshKey={expensesVersion}
+              />
+            </>
           ) : (
             <MemberList members={group.members} />
           )}
         </section>
       </main>
+      {isAddExpenseOpen && group.members.length > 0 && (
+        // No sign-in yet, so the first member stands in for the current user.
+        <AddExpenseModal
+          groupId={group.id}
+          members={group.members}
+          currentUserId={group.members[0].id}
+          onClose={() => setIsAddExpenseOpen(false)}
+          onSaved={() => setExpensesVersion((version) => version + 1)}
+        />
+      )}
     </div>
   )
 }

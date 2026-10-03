@@ -6,6 +6,8 @@ import { ExpenseCard } from './ExpenseCard'
 interface ExpenseListProps {
   groupId: string
   members: User[]
+  /** Change this value to refetch, e.g. after an expense is added. */
+  refreshKey?: number
 }
 
 type LoadState =
@@ -13,7 +15,7 @@ type LoadState =
   | { status: 'error' }
   | { status: 'ready'; expenses: Expense[] }
 
-export function ExpenseList({ groupId, members }: ExpenseListProps) {
+export function ExpenseList({ groupId, members, refreshKey = 0 }: ExpenseListProps) {
   const [state, setState] = useState<LoadState>({ status: 'loading' })
 
   useEffect(() => {
@@ -29,7 +31,7 @@ export function ExpenseList({ groupId, members }: ExpenseListProps) {
     return () => {
       cancelled = true
     }
-  }, [groupId])
+  }, [groupId, refreshKey])
 
   if (state.status === 'loading') {
     return <p className="py-8 text-center text-sm text-gray-500">Loading expenses…</p>

@@ -58,6 +58,13 @@ alter table public.group_members enable row level security;
 alter table public.expenses enable row level security;
 alter table public.line_items enable row level security;
 
+-- RLS policies only filter rows; the API roles also need table privileges.
+-- Newer Supabase projects do not grant these automatically.
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete
+  on public.groups, public.group_members, public.expenses, public.line_items
+  to anon, authenticated;
+
 drop policy if exists "dev public access" on public.groups;
 create policy "dev public access" on public.groups
   for all to anon, authenticated using (true) with check (true);
