@@ -3,14 +3,16 @@ import { AddExpenseModal } from './components/AddExpenseModal'
 import { ExpenseList } from './components/ExpenseList'
 import { Header } from './components/Header'
 import { MemberList } from './components/MemberList'
+import { SquareUpView } from './components/SquareUpView'
 import { Tabs, type TabOption } from './components/Tabs'
 import { fetchGroup, isMockGroup } from './services/expenseService'
 import type { Group } from './types'
 
-type TabId = 'expenses' | 'members'
+type TabId = 'expenses' | 'squareUp' | 'members'
 
 const TABS: TabOption<TabId>[] = [
   { id: 'expenses', label: 'Expenses / Receipts' },
+  { id: 'squareUp', label: 'Square Up' },
   { id: 'members', label: 'Members' },
 ]
 
@@ -72,6 +74,13 @@ function App() {
                 refreshKey={expensesVersion}
               />
             </>
+          ) : activeTab === 'squareUp' ? (
+            <SquareUpView
+              key={group.id}
+              groupId={group.id}
+              members={group.members}
+              refreshKey={expensesVersion}
+            />
           ) : (
             <MemberList members={group.members} />
           )}

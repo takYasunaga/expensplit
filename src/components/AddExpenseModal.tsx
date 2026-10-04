@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { parseDollarsToCents } from '../lib/money'
 import { createExpense } from '../services/expenseService'
+import {
+  fileToBase64,
+  parseReceiptImage,
+  ReceiptScanError,
+} from '../services/geminiOcrService'
 import type { ExpenseDraft, LineItemDraft, NewExpense, User } from '../types'
 import { ExpenseOverviewStep } from './ExpenseOverviewStep'
 import { ItemizationStep } from './ItemizationStep'
+import { ReceiptUploader } from './ReceiptUploader'
 
 interface AddExpenseModalProps {
   groupId: string
@@ -68,6 +74,11 @@ export function AddExpenseModal({
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [step, setStep] = useState<Step>('overview')
   const [isSaving, setIsSaving] = useState(false)
+  const [isScanning, setIsScanning] = useState(false)
+  const [receiptFile, setReceiptFile] = useState<File | null>(null)
+  const [scanMessage, setScanMessage] = useState<{ tone: 'error' | 'info'; text: string } | null>(
+    null,
+  )
   const [saveError, setSaveError] = useState<string | null>(null)
   const [draft, setDraft] = useState<ExpenseDraft>(() => ({
     title: '',
@@ -113,6 +124,49 @@ export function AddExpenseModal({
         return { ...item, assignedTo }
       }),
     }))
+
+  const scanReceipt = async () => {
+    if (!receiptFile || isScanning) return
+    setIsScanning(true)
+    setScanMessage(null)
+    try {
+      const receipt = await parseReceiptImage(await fileToBase64(receiptFile), receiptFile.type)
+      setDraft((prev) => ({
+        ...prev,
+        title: receipt.merchantName || prev.title,
+        totalAmount: receipt.totalAmount > 0 ? receipt.totalAmount.toFixed(2) : prev.totalAmount,
+        splitEqually: receipt.lineItems.length > 0 ? false : prev.splitEqually,
+        // Scanned items replace whatever was typed; members are assigned in step 2.
+        lineItems:
+          receipt.lineItems.length > 0
+            ? receipt.lineItems.map((item) => ({
+                id: crypto.randomUUID(),
+                name: item.description,
+                price: item.amount.toFixed(2),
+                assignedTo: [],
+              }))
+            : prev.lineItems,
+      }))
+      const count = receipt.lineItems.length
+      setScanMessage({
+        tone: 'info',
+        text:
+          count > 0
+            ? `✓ Found ${count} ${count === 1 ? 'item' : 'items'}. Check the details, then assign members in the next step.`
+            : '✓ Read the total, but no line items. Add them in the next step.',
+      })
+    } catch (error) {
+      setScanMessage({
+        tone: 'error',
+        text:
+          error instanceof ReceiptScanError
+            ? error.message
+            : 'Couldn’t scan the receipt. Try again, or enter the details manually.',
+      })
+    } finally {
+      setIsScanning(false)
+    }
+  }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -166,11 +220,28 @@ export function AddExpenseModal({
 
         <div className="max-h-[60svh] overflow-y-auto px-5 py-4">
           {step === 'overview' ? (
-            <ExpenseOverviewStep
-              draft={draft}
-              members={members}
-              onChange={(changes) => setDraft((prev) => ({ ...prev, ...changes }))}
-            />
+            <div className="space-y-4">
+              <ReceiptUploader
+                file={receiptFile}
+                onFileChange={(file) => {
+                  setReceiptFile(file)
+                  setScanMessage(null)
+                }}
+                onScan={scanReceipt}
+                isScanning={isScanning}
+                scanMessage={scanMessage}
+              />
+              <div className="flex items-center gap-3 text-xs text-gray-400">
+                <span className="h-px flex-1 bg-gray-200" />
+                or enter the details manually
+                <span className="h-px flex-1 bg-gray-200" />
+              </div>
+              <ExpenseOverviewStep
+                draft={draft}
+                members={members}
+                onChange={(changes) => setDraft((prev) => ({ ...prev, ...changes }))}
+              />
+            </div>
           ) : (
             <ItemizationStep
               lineItems={draft.lineItems}
@@ -221,7 +292,7 @@ export function AddExpenseModal({
           )}
           <button
             type="submit"
-            disabled={step === 'itemization' && (!canFinish || isSaving)}
+            disabled={isScanning || (step === 'itemization' && (!canFinish || isSaving))}
             className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-gray-300"
           >
             {step === 'overview' ? 'Next' : isSaving ? 'Saving…' : 'Save Expense'}

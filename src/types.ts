@@ -46,27 +46,45 @@ export interface NewExpense extends Omit<Expense, 'id' | 'lineItems'> {
 /** PRD calls this the "Payment Object". */
 export type PaymentObject = Expense
 
+/** One member's position across all of a group's expenses, in cents. */
 export interface MemberBalance {
-  userId: string
-  /** Net balance in cents: positive = is owed money, negative = owes money. */
-  netAmount: number
+  memberId: string
+  name: string
+  /** Total the member paid upfront. */
+  totalSpent: number
+  /** Total of the member's shares across all line items. */
+  totalOwed: number
+  /** Settlement payments made minus settlement payments received. */
+  totalSettled: number
+  /**
+   * totalSpent - totalOwed + totalSettled: positive = is owed money,
+   * negative = owes money.
+   */
+  netBalance: number
 }
 
-/** A single "who owes who" transfer. */
-export interface Transfer {
-  fromUserId: string
-  toUserId: string
+/** A single "who owes who" payment, in cents. */
+export interface SettlementTransaction {
+  fromMemberId: string
+  toMemberId: string
   amount: number
-  /** Marked once the debt has been paid externally (Interac, Venmo, ...). */
-  isPaid: boolean
 }
+
+/** A recorded payment between two members ("Mark as Paid"), in cents. */
+export interface SettlementRecord extends SettlementTransaction {
+  id: string
+  groupId: string
+  /** ISO 8601 date/time the payment was marked as paid. */
+  createdAt: string
+}
+
+export type NewSettlementRecord = Omit<SettlementRecord, 'id' | 'createdAt'>
 
 export interface Settlement {
-  groupId: string
   /** Calculated Balance: aggregate net balance for each member. */
   balances: MemberBalance[]
-  /** Optimal Settlement: simplified transfers that minimize total payments. */
-  transfers: Transfer[]
+  /** Optimal Settlement: simplified payments that settle every balance. */
+  transactions: SettlementTransaction[]
 }
 
 /** A line item being typed into the Add Expense form; not yet validated. */

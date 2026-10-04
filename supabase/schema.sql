@@ -42,10 +42,22 @@ create table if not exists public.line_items (
   assigned_to uuid[] not null default '{}'
 );
 
+-- A payment between two members that was made outside the app and marked as paid.
+create table if not exists public.settlements (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.groups (id) on delete cascade,
+  from_user_id uuid not null references public.group_members (id) on delete restrict,
+  to_user_id uuid not null references public.group_members (id) on delete restrict,
+  amount integer not null check (amount > 0),
+  created_at timestamptz not null default now(),
+  check (from_user_id <> to_user_id)
+);
+
 create index if not exists group_members_group_id_idx on public.group_members (group_id);
 create index if not exists expenses_group_id_idx on public.expenses (group_id);
 create index if not exists expenses_payer_id_idx on public.expenses (payer_id);
 create index if not exists line_items_expense_id_idx on public.line_items (expense_id);
+create index if not exists settlements_group_id_idx on public.settlements (group_id);
 
 -- ---------------------------------------------------------------------------
 -- Row Level Security
@@ -57,12 +69,13 @@ alter table public.groups enable row level security;
 alter table public.group_members enable row level security;
 alter table public.expenses enable row level security;
 alter table public.line_items enable row level security;
+alter table public.settlements enable row level security;
 
 -- RLS policies only filter rows; the API roles also need table privileges.
 -- Newer Supabase projects do not grant these automatically.
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete
-  on public.groups, public.group_members, public.expenses, public.line_items
+  on public.groups, public.group_members, public.expenses, public.line_items, public.settlements
   to anon, authenticated;
 
 drop policy if exists "dev public access" on public.groups;
@@ -79,6 +92,10 @@ create policy "dev public access" on public.expenses
 
 drop policy if exists "dev public access" on public.line_items;
 create policy "dev public access" on public.line_items
+  for all to anon, authenticated using (true) with check (true);
+
+drop policy if exists "dev public access" on public.settlements;
+create policy "dev public access" on public.settlements
   for all to anon, authenticated using (true) with check (true);
 
 -- ---------------------------------------------------------------------------

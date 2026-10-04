@@ -1,9 +1,16 @@
 import { supabase } from '../lib/supabase'
 import { mockExpenses, mockGroup } from '../mockData'
-import type { Expense, Group, NewExpense } from '../types'
+import type {
+  Expense,
+  Group,
+  NewExpense,
+  NewSettlementRecord,
+  SettlementRecord,
+} from '../types'
 
-// Offline stand-in for the expenses table; additions last until the page reloads.
+// Offline stand-ins for the database tables; additions last until the page reloads.
 let localExpenses: Expense[] = mockExpenses
+let localSettlements: SettlementRecord[] = []
 
 interface GroupRow {
   id: string
@@ -27,6 +34,28 @@ interface ExpenseRow {
     amount: number
     assigned_to: string[]
   }[]
+}
+
+interface SettlementRow {
+  id: string
+  group_id: string
+  from_user_id: string
+  to_user_id: string
+  amount: number
+  created_at: string
+}
+
+const SETTLEMENT_COLUMNS = 'id, group_id, from_user_id, to_user_id, amount, created_at'
+
+function toSettlementRecord(row: SettlementRow): SettlementRecord {
+  return {
+    id: row.id,
+    groupId: row.group_id,
+    fromMemberId: row.from_user_id,
+    toMemberId: row.to_user_id,
+    amount: row.amount,
+    createdAt: row.created_at,
+  }
 }
 
 function toGroup(row: GroupRow): Group {
@@ -181,4 +210,50 @@ export async function createExpense(expense: NewExpense): Promise<Expense> {
       id: idByPosition.get(position) ?? crypto.randomUUID(),
     })),
   }
+}
+
+/** Loads a group's recorded settlement payments, oldest first. Throws on failure. */
+export async function fetchSettlements(groupId: string): Promise<SettlementRecord[]> {
+  if (!supabase || groupId === mockGroup.id) {
+    return localSettlements.filter((settlement) => settlement.groupId === groupId)
+  }
+
+  const { data, error } = await supabase
+    .from('settlements')
+    .select(SETTLEMENT_COLUMNS)
+    .eq('group_id', groupId)
+    .order('created_at')
+
+  if (error) throw error
+  return (data as SettlementRow[]).map(toSettlementRecord)
+}
+
+/**
+ * Records a payment between two members and returns the saved record. For the
+ * mock group it is only kept in memory. Throws if the write fails.
+ */
+export async function createSettlement(settlement: NewSettlementRecord): Promise<SettlementRecord> {
+  if (!supabase || settlement.groupId === mockGroup.id) {
+    const saved: SettlementRecord = {
+      ...settlement,
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+    }
+    localSettlements = [...localSettlements, saved]
+    return saved
+  }
+
+  const { data, error } = await supabase
+    .from('settlements')
+    .insert({
+      group_id: settlement.groupId,
+      from_user_id: settlement.fromMemberId,
+      to_user_id: settlement.toMemberId,
+      amount: settlement.amount,
+    })
+    .select(SETTLEMENT_COLUMNS)
+    .single()
+
+  if (error) throw error
+  return toSettlementRecord(data as SettlementRow)
 }

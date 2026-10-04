@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react'
-import { fetchExpenses } from '../services/expenseService'
-import type { Expense, User } from '../types'
+import { useExpenses } from '../hooks/useExpenses'
+import type { User } from '../types'
 import { ExpenseCard } from './ExpenseCard'
 
 interface ExpenseListProps {
@@ -10,28 +9,8 @@ interface ExpenseListProps {
   refreshKey?: number
 }
 
-type LoadState =
-  | { status: 'loading' }
-  | { status: 'error' }
-  | { status: 'ready'; expenses: Expense[] }
-
 export function ExpenseList({ groupId, members, refreshKey = 0 }: ExpenseListProps) {
-  const [state, setState] = useState<LoadState>({ status: 'loading' })
-
-  useEffect(() => {
-    let cancelled = false
-    fetchExpenses(groupId)
-      .then((expenses) => {
-        if (!cancelled) setState({ status: 'ready', expenses })
-      })
-      .catch((error: unknown) => {
-        console.error('Failed to load expenses:', error)
-        if (!cancelled) setState({ status: 'error' })
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [groupId, refreshKey])
+  const state = useExpenses(groupId, refreshKey)
 
   if (state.status === 'loading') {
     return <p className="py-8 text-center text-sm text-gray-500">Loading expenses…</p>
